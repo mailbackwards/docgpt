@@ -1,0 +1,90 @@
+var OPENAI_API_KEY = "your-key-here"
+var OPENAI_ASSISTANT_ID = "your-assistant-id-here"
+
+
+function gDocToMarkdown(gDocId) {
+  const url = `https://docs.google.com/feeds/download/documents/export/Export?exportFormat=markdown&id=${gDocId}`;
+
+  const res = UrlFetchApp.fetch(url, {
+    headers: { authorization: "Bearer " + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true
+  });
+
+  const blob = res.getBlob();
+  const markdown = blob.getAs("text/markdown").getDataAsString();
+  return markdown;
+}
+
+function writeNewDoc(text) {
+  const doc = DocumentApp.getActiveDocument();
+  const newBlob = Utilities.newBlob(text, "text/markdown", `${doc.getName()} - DocGPT - ${Date.now()}.md`)
+  DriveApp.createFile(newBlob);
+}
+
+function callAssistant() {
+  var doc = DocumentApp.getActiveDocument();
+  var markdown = gDocToMarkdown(doc.getId());
+
+  // Create the run
+  const url = "https://api.openai.com/v1/threads/runs";
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    "OpenAI-Beta": "assistants=v2"
+  };
+  const payload = {
+    "assistant_id": OPENAI_ASSISTANT_ID,
+    "thread": {
+      "messages": [
+        {
+          "role": "user",
+          "content": markdown
+        }
+      ]
+    }
+  };
+  const options = {
+    "method": "post",
+    "headers": headers,
+    "payload": JSON.stringify(payload),
+    "muteHttpExceptions": true
+  };
+  const response = UrlFetchApp.fetch(url, options);
+
+  const jsonData = JSON.parse(response.getContentText());
+  const runID = jsonData.id;
+  const threadID = jsonData.thread_id;
+  const terminalStates = new Set(["requires_action", "cancelled", "completed", "failed", "expired", "incomplete"])
+
+  while (true) {
+    // Poll for the run until it reaches a terminal state
+    const url = `https://api.openai.com/v1/threads/${threadID}/runs/${runID}`;
+    const getRunOptions = {
+      "method": "get",
+      "headers": headers,
+      "muteHttpExceptions": true
+    };
+    const runResponse = UrlFetchApp.fetch(url, getRunOptions);
+
+    const jsonResponse = JSON.parse(runResponse.getContentText());
+    Logger.log(`STATUS IS ${jsonResponse.status}`);
+
+    if (terminalStates.has(jsonResponse.status)) {
+      // Get the response message
+      const msgsUrl = `https://api.openai.com/v1/threads/${threadID}/messages`;
+      const msgsOptions = {
+        "method": "get",
+        "headers": headers,
+        "muteHttpExceptions": true
+      };
+
+      const msgsResponse = UrlFetchApp.fetch(msgsUrl, msgsOptions);
+
+      const msgsJsonResponse = JSON.parse(msgsResponse.getContentText());
+      writeNewDoc(msgsJsonResponse.data[0].content[0].text.value);
+      break;
+    }
+  }
+
+  // DriveApp.getFiles(); // <--- This comment line is used for automatically detecting the scope of "https://www.googleapis.com/auth/drive.readonly" by the script editor. So, please don't remove this comment.
+}
