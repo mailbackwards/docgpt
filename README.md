@@ -4,6 +4,12 @@ DocGPT sends the content of a document to OpenAI's Assistant API and creates a n
 
 The primary use case is for document-wide transformation, such as translation, copy-editing, or related revisions. But it can do anything that you ask your Assistant to do with your doc!
 
+## Demo
+
+Click below for a video demonstrating how it works:
+
+[![Demo Video](https://img.youtube.com/vi/yWozUUpkLJc/0.jpg)](https://youtu.be/yWozUUpkLJc)
+
 ## Features
 - Converts the entire Google Doc to markdown.
 - Sends the markdown content to OpenAI's Assistant API.
